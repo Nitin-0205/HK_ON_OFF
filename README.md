@@ -90,32 +90,33 @@ In Apps Script Editor:
 2. Add Script Properties:
    - `RECIPIENT_EMAIL`: Email address to send to
 
-## 🔄 GitHub Workflows
+## 🤖 GitHub Workflow - ONE Workflow for Everything
 
-### 1. Deploy Workflow (`deploy-apps-script.yml`)
+**File:** `.github/workflows/hr-automation.yml`
 
-Automatically deploys changes when you push to `main`/`master` branch.
+### 🔄 Auto-Deploy (when you push code)
+```bash
+git add Code.gs
+git commit -m "Update automation"
+git push
+# → Auto-deploys to Apps Script
+```
 
-**Triggers:**
-- Push to main/master branch
-- Pull requests
-- Manual dispatch
+### ⏰ Scheduled Runs (weekdays)
+- **9 AM UTC** → Send pending task emails
+- **11 AM, 1 PM, 3 PM, 5 PM UTC** → Process DONE replies
 
-### 2. Run Workflow (`run-apps-script.yml`)
+### 🎯 Manual Trigger
+Go to **Actions** tab → **HR Automation** → **Run workflow**
 
-Executes the Apps Script functions on a schedule or manually.
+Choose action:
+- **deploy** - Deploy code only
+- **fullAutomation** - Send emails + process replies
+- **sendEmails** - Send task emails
+- **processReplies** - Process DONE replies
+- **sendReminders** - Send overdue reminders
 
-**Triggers:**
-- Daily at 9 AM UTC (configurable)
-- Manual dispatch with function selection
-
-### 3. Scheduled Email Workflow (`scheduled-email.yml`)
-
-Sends automated emails on a schedule.
-
-**Triggers:**
-- Monday to Friday at 9 AM UTC
-- Manual dispatch
+📖 **Detailed guide:** [WORKFLOW_GUIDE.md](WORKFLOW_GUIDE.md)
 
 ## 📝 Usage
 

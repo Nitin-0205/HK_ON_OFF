@@ -1,0 +1,104 @@
+name: HR Automation
+
+on:
+  # Auto-deploy when code changes
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'mail_auto/Code.gs'
+      - 'mail_auto/appsscript.json'
+  
+  # Scheduled automation (weekdays only)
+  schedule:
+    # Send emails at 9 AM UTC (weekdays)
+    - cron: '0 9 * * 1-5'
+    # Process replies every 2 hours during work hours
+    - cron: '0 11,13,15,17 * * 1-5'
+  
+  # Manual trigger with options
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Action to perform'
+        required: true
+        type: choice
+        options:
+          - deploy
+          - fullAutomation
+          - sendEmails
+          - processReplies
+          - sendReminders
+        default: 'fullAutomation'
+
+jobs:
+  # Deploy code changes to Apps Script
+  deploy:
+    name: Deploy Code
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'deploy')
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+    
+    - name: Install clasp
+      run: npm install -g @google/clasp
+    
+    - name: Authenticate
+      run: |
+        echo '${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}' > /tmp/creds.json
+        clasp login --creds /tmp/creds.json --no-localhost
+    
+    - name: Push to Apps Script
+      working-directory: mail_auto
+      run: |
+        echo '{"scriptId":"${{ secrets.SCRIPT_ID }}","rootDir":"."}' > .clasp.json
+        clasp push --force
+        echo "✅ Code deployed successfully!"
+    
+    - name: Cleanup
+      if: always()
+      run: rm -f /tmp/creds.json
+
+  # Run automation
+  run:
+    name: Execute Automation
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action != 'deploy')
+    
+    steps:
+    - name: Determine action
+      id: action
+      run: |
+        if [ "${{ github.event_name }}" == "schedule" ]; then
+          HOUR=$(date -u +%H)
+          if [ "$HOUR" == "09" ]; then
+            echo "action=sendEmails" >> $GITHUB_OUTPUT
+          else
+            echo "action=processReplies" >> $GITHUB_OUTPUT
+          fi
+        else
+          echo "action=${{ github.event.inputs.action }}" >> $GITHUB_OUTPUT
+        fi
+    
+    - name: Execute
+      run: |
+        ACTION="${{ steps.action.outputs.action }}"
+        RESPONSE=$(curl -sL -w "\n%{http_code}" "${{ secrets.APPS_SCRIPT_WEB_APP_URL }}?action=${ACTION}")
+        HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+        BODY=$(echo "$RESPONSE" | sed '$d')
+        
+        echo "Action: $ACTION"
+        echo "Response: $BODY"
+        
+        if [ "$HTTP_CODE" == "200" ] || [ "$HTTP_CODE" == "302" ]; then
+          echo "✅ Success!"
+        else
+          echo "❌ Failed (HTTP $HTTP_CODE)"
+          exit 1
+        fi
