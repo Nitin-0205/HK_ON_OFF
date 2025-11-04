@@ -1,29 +1,25 @@
 name: HR Automation
 
 on:
-  # Auto-deploy when code changes
+  # Auto-deploy on code changes
   push:
     branches: [ main, master ]
     paths:
       - 'mail_auto/Code.gs'
       - 'mail_auto/appsscript.json'
   
-  # Scheduled automation (weekdays only)
+  # Scheduled runs (weekdays only)
   schedule:
-    # Send emails at 9 AM UTC (weekdays)
-    - cron: '0 9 * * 1-5'
-    # Process replies every 2 hours during work hours
-    - cron: '0 11,13,15,17 * * 1-5'
+    - cron: '0 9 * * 1-5'      # 9 AM UTC - send emails
+    - cron: '0 11,13,15,17 * * 1-5'  # Every 2 hours - process replies
   
-  # Manual trigger with options
+  # Manual trigger
   workflow_dispatch:
     inputs:
       action:
-        description: 'Action to perform'
-        required: true
+        description: 'Action'
         type: choice
         options:
-          - deploy
           - fullAutomation
           - sendEmails
           - processReplies
@@ -31,57 +27,34 @@ on:
         default: 'fullAutomation'
 
 jobs:
-  # Deploy code changes to Apps Script
   deploy:
-    name: Deploy Code
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'deploy')
-    
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    
-    - name: Set up Node.js
-      uses: actions/setup-node@v4
+    - uses: actions/checkout@v4
+    - uses: actions/setup-node@v4
       with:
         node-version: '20'
-    
-    - name: Install clasp
-      run: npm install -g @google/clasp
-    
-    - name: Authenticate
-      run: |
+    - run: npm install -g @google/clasp
+    - run: |
         echo '${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}' > /tmp/creds.json
         clasp login --creds /tmp/creds.json --no-localhost
-    
-    - name: Push to Apps Script
-      working-directory: mail_auto
+    - working-directory: mail_auto
       run: |
-        echo '{"scriptId":"${{ secrets.SCRIPT_ID }}","rootDir":"."}' > .clasp.json
+        echo '{"scriptId":"${{ secrets.SCRIPT_ID }}"}' > .clasp.json
         clasp push --force
-        echo "✅ Code deployed successfully!"
-    
-    - name: Cleanup
-      if: always()
+    - if: always()
       run: rm -f /tmp/creds.json
 
-  # Run automation
   run:
-    name: Execute Automation
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action != 'deploy')
-    
     steps:
-    - name: Determine action
+    - name: Set action
       id: action
       run: |
         if [ "${{ github.event_name }}" == "schedule" ]; then
-          HOUR=$(date -u +%H)
-          if [ "$HOUR" == "09" ]; then
-            echo "action=sendEmails" >> $GITHUB_OUTPUT
-          else
-            echo "action=processReplies" >> $GITHUB_OUTPUT
-          fi
+          [ "$(date -u +%H)" == "09" ] && echo "action=sendEmails" >> $GITHUB_OUTPUT || echo "action=processReplies" >> $GITHUB_OUTPUT
         else
           echo "action=${{ github.event.inputs.action }}" >> $GITHUB_OUTPUT
         fi
@@ -89,64 +62,8 @@ jobs:
     - name: Execute
       run: |
         ACTION="${{ steps.action.outputs.action }}"
-        URL="${{ secrets.APPS_SCRIPT_WEB_APP_URL }}"
-        
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo "🚀 Executing HR Automation"
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo "📍 Action: $ACTION"
-        echo "🔗 URL: $URL"
-        echo "⏰ Time: $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
-        echo ""
-        
-        # Call the web app
-        RESPONSE=$(curl -sL -w "\n%{http_code}" "${URL}?action=${ACTION}")
-        HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
-        BODY=$(echo "$RESPONSE" | sed '$d')
-        
-        echo "📡 HTTP Status Code: $HTTP_CODE"
-        echo "📄 Response Body:"
-        echo "$BODY" | jq '.' 2>/dev/null || echo "$BODY"
-        echo ""
-        
-        # Check if successful
-        if [ "$HTTP_CODE" == "200" ] || [ "$HTTP_CODE" == "302" ]; then
-          echo "✅ Success! Automation executed."
-          
-          # Parse response for status
-          STATUS=$(echo "$BODY" | jq -r '.status' 2>/dev/null || echo "unknown")
-          MESSAGE=$(echo "$BODY" | jq -r '.message' 2>/dev/null || echo "")
-          
-          if [ "$STATUS" == "error" ]; then
-            echo "⚠️  Warning: Script returned error status"
-            echo "Error message: $MESSAGE"
-            exit 1
-          fi
-        else
-          echo "❌ Failed! HTTP $HTTP_CODE"
-          echo ""
-          echo "🔍 Possible Issues:"
-          echo "  1. Web app not deployed or wrong URL"
-          echo "  2. Web app access not set to 'Anyone'"
-          echo "  3. APPS_SCRIPT_WEB_APP_URL secret is incorrect"
-          echo ""
-          exit 1
-        fi
-    
-    - name: Summary
-      if: always()
-      run: |
-        echo "## 🤖 HR Automation Summary" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
-        echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
-        echo "| **Action** | ${{ steps.action.outputs.action }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| **Trigger** | ${{ github.event_name }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| **Time** | $(date -u +'%Y-%m-%d %H:%M:%S UTC') |" >> $GITHUB_STEP_SUMMARY
-        echo "| **Status** | ${{ job.status }} |" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        if [ "${{ job.status }}" == "success" ]; then
-          echo "✅ **Result:** Automation completed successfully!" >> $GITHUB_STEP_SUMMARY
-        else
-          echo "❌ **Result:** Automation failed. Check logs above." >> $GITHUB_STEP_SUMMARY
-        fi
+        RESPONSE=$(curl -sL "${APPS_SCRIPT_WEB_APP_URL}?action=${ACTION}")
+        echo "Action: $ACTION"
+        echo "Response: $RESPONSE"
+      env:
+        APPS_SCRIPT_WEB_APP_URL: ${{ secrets.APPS_SCRIPT_WEB_APP_URL }}
