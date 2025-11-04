@@ -89,16 +89,64 @@ jobs:
     - name: Execute
       run: |
         ACTION="${{ steps.action.outputs.action }}"
-        RESPONSE=$(curl -sL -w "\n%{http_code}" "${{ secrets.APPS_SCRIPT_WEB_APP_URL }}?action=${ACTION}")
+        URL="${{ secrets.APPS_SCRIPT_WEB_APP_URL }}"
+        
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "🚀 Executing HR Automation"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "📍 Action: $ACTION"
+        echo "🔗 URL: $URL"
+        echo "⏰ Time: $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
+        echo ""
+        
+        # Call the web app
+        RESPONSE=$(curl -sL -w "\n%{http_code}" "${URL}?action=${ACTION}")
         HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
         BODY=$(echo "$RESPONSE" | sed '$d')
         
-        echo "Action: $ACTION"
-        echo "Response: $BODY"
+        echo "📡 HTTP Status Code: $HTTP_CODE"
+        echo "📄 Response Body:"
+        echo "$BODY" | jq '.' 2>/dev/null || echo "$BODY"
+        echo ""
         
+        # Check if successful
         if [ "$HTTP_CODE" == "200" ] || [ "$HTTP_CODE" == "302" ]; then
-          echo "✅ Success!"
+          echo "✅ Success! Automation executed."
+          
+          # Parse response for status
+          STATUS=$(echo "$BODY" | jq -r '.status' 2>/dev/null || echo "unknown")
+          MESSAGE=$(echo "$BODY" | jq -r '.message' 2>/dev/null || echo "")
+          
+          if [ "$STATUS" == "error" ]; then
+            echo "⚠️  Warning: Script returned error status"
+            echo "Error message: $MESSAGE"
+            exit 1
+          fi
         else
-          echo "❌ Failed (HTTP $HTTP_CODE)"
+          echo "❌ Failed! HTTP $HTTP_CODE"
+          echo ""
+          echo "🔍 Possible Issues:"
+          echo "  1. Web app not deployed or wrong URL"
+          echo "  2. Web app access not set to 'Anyone'"
+          echo "  3. APPS_SCRIPT_WEB_APP_URL secret is incorrect"
+          echo ""
           exit 1
+        fi
+    
+    - name: Summary
+      if: always()
+      run: |
+        echo "## 🤖 HR Automation Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+        echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
+        echo "| **Action** | ${{ steps.action.outputs.action }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| **Trigger** | ${{ github.event_name }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| **Time** | $(date -u +'%Y-%m-%d %H:%M:%S UTC') |" >> $GITHUB_STEP_SUMMARY
+        echo "| **Status** | ${{ job.status }} |" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        if [ "${{ job.status }}" == "success" ]; then
+          echo "✅ **Result:** Automation completed successfully!" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ **Result:** Automation failed. Check logs above." >> $GITHUB_STEP_SUMMARY
         fi
