@@ -1,0 +1,56 @@
+name: Deploy Google Apps Script
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'mail_auto/**'
+  workflow_dispatch:
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+    
+    - name: Install clasp
+      run: npm install -g @google/clasp
+    
+    - name: Create credentials file
+      run: |
+        echo '${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}' > /tmp/credentials.json
+    
+    - name: Authenticate with clasp
+      run: |
+        clasp login --creds /tmp/credentials.json --no-localhost
+    
+    - name: Update Script ID
+      working-directory: mail_auto
+      run: |
+        echo '{"scriptId":"${{ secrets.SCRIPT_ID }}"}' > .clasp.json
+    
+    - name: Push to Apps Script
+      working-directory: mail_auto
+      run: |
+        clasp push --force
+    
+    - name: Deploy new version
+      working-directory: mail_auto
+      run: |
+        VERSION=$(clasp version "Deployed from GitHub Actions - $(date)")
+        echo "Deployed version: $VERSION"
+        clasp deploy --versionNumber ${VERSION##* } --description "Auto-deployed from GitHub"
+    
+    - name: Cleanup credentials
+      if: always()
+      run: rm -f /tmp/credentials.json

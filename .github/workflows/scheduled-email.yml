@@ -1,0 +1,88 @@
+name: HR Checklist Automation
+
+on:
+  schedule:
+    # Run Monday to Friday at 9 AM UTC (adjust for your timezone)
+    - cron: '0 9 * * 1-5'
+    # Run reply processing every 2 hours during work hours (9 AM - 5 PM UTC)
+    - cron: '0 9-17/2 * * 1-5'
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Action to perform'
+        required: true
+        default: 'fullAutomation'
+        type: choice
+        options:
+          - fullAutomation
+          - sendEmails
+          - processReplies
+          - sendReminders
+
+jobs:
+  run-automation:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Get current date and time
+      id: date
+      run: |
+        echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+        echo "time=$(date +'%H:%M:%S')" >> $GITHUB_OUTPUT
+    
+    - name: Run HR Automation
+      env:
+        WEB_APP_URL: ${{ secrets.APPS_SCRIPT_WEB_APP_URL }}
+        ACTION: ${{ github.event.inputs.action || 'fullAutomation' }}
+      run: |
+        echo "🚀 Running HR Checklist Automation"
+        echo "📅 Date: ${{ steps.date.outputs.date }}"
+        echo "⏰ Time: ${{ steps.date.outputs.time }}"
+        echo "🎯 Action: $ACTION"
+        
+        # Trigger the Apps Script web app
+        response=$(curl -L -s -o response.json -w "%{http_code}" \
+          -X POST \
+          -H "Content-Type: application/json" \
+          "$WEB_APP_URL?action=$ACTION")
+        
+        echo "📡 HTTP Status: $response"
+        
+        if [ -f response.json ]; then
+          echo "📄 Response:"
+          cat response.json | jq '.' || cat response.json
+        fi
+        
+        # Check if successful
+        if [ "$response" -eq 200 ] || [ "$response" -eq 302 ]; then
+          echo "✅ HR automation completed successfully!"
+          exit 0
+        else
+          echo "❌ HR automation failed with status $response"
+          exit 1
+        fi
+    
+    - name: Upload response artifact
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: automation-response-${{ steps.date.outputs.date }}-${{ github.run_number }}
+        path: response.json
+        retention-days: 7
+    
+    - name: Summary
+      if: always()
+      run: |
+        echo "## HR Automation Summary 📊" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "- **Date:** ${{ steps.date.outputs.date }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Time:** ${{ steps.date.outputs.time }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Action:** ${{ github.event.inputs.action || 'fullAutomation' }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Status:** ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        if [ -f response.json ]; then
+          echo "### Response:" >> $GITHUB_STEP_SUMMARY
+          echo '```json' >> $GITHUB_STEP_SUMMARY
+          cat response.json >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+        fi

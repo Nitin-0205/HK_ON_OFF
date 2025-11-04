@@ -1,0 +1,53 @@
+name: Manual HR Automation Trigger
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Action to execute'
+        required: true
+        default: 'fullAutomation'
+        type: choice
+        options:
+          - fullAutomation
+          - sendEmails
+          - processReplies
+          - sendReminders
+
+jobs:
+  execute:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Execute HR Automation
+      env:
+        WEB_APP_URL: ${{ secrets.APPS_SCRIPT_WEB_APP_URL }}
+        ACTION: ${{ github.event.inputs.action }}
+      run: |
+        echo "🎯 Executing: $ACTION"
+        
+        response=$(curl -L -w "\n%{http_code}" -s \
+          -X POST \
+          "$WEB_APP_URL?action=$ACTION")
+        
+        http_code=$(echo "$response" | tail -n1)
+        body=$(echo "$response" | sed '$d')
+        
+        echo "📄 Response: $body"
+        echo "📡 HTTP Code: $http_code"
+        
+        if [ "$http_code" -ne 200 ] && [ "$http_code" -ne 302 ]; then
+          echo "❌ Error: Request failed with HTTP code $http_code"
+          exit 1
+        fi
+        
+        echo "✅ Action '$ACTION' completed successfully!"
+    
+    - name: Summary
+      if: always()
+      run: |
+        echo "## Execution Summary 📊" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "- **Action:** ${{ github.event.inputs.action }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Status:** ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Triggered by:** @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY

@@ -1,0 +1,9 @@
+**/**
+!Code.gs
+!appsscript.json
+.git/**
+.github/**
+node_modules/**
+README.md
+.env
+.clasp.json

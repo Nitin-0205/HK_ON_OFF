@@ -1,0 +1,28 @@
+{
+  "name": "mail_auto",
+  "version": "1.0.0",
+  "description": "Google Apps Script automation with GitHub Actions",
+  "scripts": {
+    "setup": "npm install",
+    "login": "npx clasp login",
+    "push": "npx clasp push",
+    "deploy": "npx clasp deploy",
+    "open": "npx clasp open",
+    "logs": "npx clasp logs",
+    "create": "npx clasp create --type standalone --title 'Mail Automation'",
+    "pull": "npx clasp pull",
+    "status": "npx clasp logs --simplified",
+    "version": "npx clasp version"
+  },
+  "keywords": [
+    "google-apps-script",
+    "automation",
+    "email",
+    "github-actions"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@google/clasp": "^2.4.2"
+  }
+}
